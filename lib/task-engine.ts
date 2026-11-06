@@ -1,29 +1,60 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export type TaskStep = { id: string; title: string; detail: string; status: "pending" | "active" | "done" | "blocked" };
+export type TaskKind = "project" | "file" | "research" | "general";
+export type ProjectArtifact = { id: string; title: string; kind: "website" | "app"; prompt: string; createdAt: string; files: Record<string, string> };
+
+export function classifyTask(prompt: string): TaskKind {
+  const lower = prompt.toLowerCase();
+  if (["website", "web app", "landing page", "html", "css", "javascript", "वेबसाइट", "वेब ऐप", "app बन", "ऐप बना"].some((term) => lower.includes(term))) return "project";
+  if (["file", "folder", "csv", "pdf", "फाइल", "फोल्डर", "डॉक्यूमेंट"].some((term) => lower.includes(term))) return "file";
+  if (["research", "search", "report", "रिसर्च", "खोज", "रिपोर्ट"].some((term) => lower.includes(term))) return "research";
+  return "general";
+}
 
 export function makePlan(prompt: string): TaskStep[] {
-  const lower = prompt.toLowerCase();
+  const kind = classifyTask(prompt);
   const steps: TaskStep[] = [
-    { id: "understand", title: "Request समझना", detail: "आपके goal और constraints को स्पष्ट करना", status: "active" },
+    { id: "understand", title: "Request समझना", detail: "Goal और constraints को स्पष्ट करना", status: "active" },
     { id: "plan", title: "Action plan बनाना", detail: "काम को छोटे, verifiable steps में तोड़ना", status: "pending" },
   ];
-  if (lower.includes("file") || lower.includes("folder") || lower.includes("फाइल") || lower.includes("फोल्डर")) {
-    steps.push({ id: "workspace", title: "Workspace inspect करना", detail: "केवल selected local files की read-only जाँच", status: "pending" });
-  } else if (lower.includes("research") || lower.includes("search") || lower.includes("रिसर्च")) {
-    steps.push({ id: "research", title: "Research scope तैयार करना", detail: "इस MVP में external browsing से पहले permission माँगी जाएगी", status: "pending" });
-  } else {
-    steps.push({ id: "execute", title: "Safe execution", detail: "स्थानीय model और अनुमत tools से काम करना", status: "pending" });
-  }
-  steps.push({ id: "verify", title: "Result verify करना", detail: "जो मिला उसे short summary में दिखाना", status: "pending" });
+  if (kind === "project") {
+    steps.push({ id: "scaffold", title: "Project scaffold बनाना", detail: "Working files और folder structure तैयार करना", status: "pending" }, { id: "verify", title: "Preview और verify", detail: "Files की basic integrity check करना", status: "pending" });
+  } else if (kind === "file") steps.push({ id: "workspace", title: "Workspace inspect करना", detail: "केवल selected local files की read-only जाँच", status: "pending" }, { id: "result", title: "Output file बनाना", detail: "Approved changes को नए output में लिखना", status: "pending" });
+  else if (kind === "research") steps.push({ id: "research", title: "Research scope तैयार करना", detail: "External browsing से पहले permission माँगी जाएगी", status: "pending" }, { id: "result", title: "Findings verify करना", detail: "Sources और summary को cross-check करना", status: "pending" });
+  else steps.push({ id: "execute", title: "Safe execution", detail: "Local model और अनुमत tools से काम करना", status: "pending" }, { id: "verify", title: "Result verify करना", detail: "जो मिला उसे short summary में दिखाना", status: "pending" });
   return steps;
+}
+
+export function createProjectArtifact(prompt: string): ProjectArtifact {
+  const lower = prompt.toLowerCase();
+  const kind = lower.includes("android") || lower.includes("mobile") || lower.includes("ऐप") ? "app" : "website";
+  const title = kind === "app" ? "LocalAgent App Starter" : "LocalAgent Web Starter";
+  const accent = kind === "app" ? "#B8F36B" : "#76E4F7";
+  const files = {
+    "index.html": `<!doctype html>\n<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><link rel="stylesheet" href="style.css"/></head><body><main class="shell"><span class="eyebrow">LOCALAGENT BUILD</span><h1>${prompt.slice(0, 72).replace(/[<>]/g, "")}</h1><p class="lead">A fast, focused ${kind} starter generated from your task.</p><button id="action">Get started</button><p id="status" class="status">Ready.</p></main><script src="app.js"></script></body></html>`,
+    "style.css": `:root{font-family:Inter,system-ui,sans-serif;color:#edf4f7;background:#0b1118;accent-color:${accent}}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 20% 10%,#20313a,transparent 35%),#0b1118}.shell{width:min(680px,calc(100% - 32px));padding:48px;border:1px solid #30444e;border-radius:28px;background:#121d26;box-shadow:0 20px 80px #0005}.eyebrow{color:${accent};font-size:11px;font-weight:800;letter-spacing:2px}h1{font-size:clamp(34px,7vw,64px);line-height:1;margin:18px 0}.lead{color:#9cafba;font-size:18px;line-height:1.6}button{border:0;border-radius:12px;background:${accent};color:#0b1118;font-weight:800;padding:14px 20px;cursor:pointer}.status{color:#8ea2af;margin-top:18px}`,
+    "app.js": `const button=document.querySelector('#action');const status=document.querySelector('#status');button.addEventListener('click',()=>{status.textContent='Action completed locally — customize this project next.';button.textContent='Done';});`,
+    "README.md": `# ${title}\n\nGenerated by LocalAgent from: ${prompt}\n\nOpen index.html to preview. Edit style.css for design and app.js for interactions.`,
+  };
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title, kind, prompt, createdAt: new Date().toISOString(), files };
+}
+
+export async function saveArtifact(artifact: ProjectArtifact) {
+  const raw = await AsyncStorage.getItem("localagent.artifacts");
+  const artifacts: ProjectArtifact[] = raw ? JSON.parse(raw) : [];
+  await AsyncStorage.setItem("localagent.artifacts", JSON.stringify([artifact, ...artifacts].slice(0, 10)));
+  return artifact;
+}
+
+export async function loadArtifacts(): Promise<ProjectArtifact[]> {
+  const raw = await AsyncStorage.getItem("localagent.artifacts");
+  return raw ? JSON.parse(raw) : [];
 }
 
 export async function runDemoPlan(steps: TaskStep[], onUpdate: (steps: TaskStep[]) => void) {
   let next = steps.map((step, index) => ({ ...step, status: index === 0 ? "active" : "pending" as TaskStep["status"] }));
   onUpdate(next);
-  for (let index = 0; index < next.length; index += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 420));
-    next = next.map((step, i) => ({ ...step, status: i < index + 1 ? "done" : i === index + 1 ? "active" : "pending" }));
-    onUpdate(next);
-  }
+  for (let index = 0; index < next.length; index += 1) { await new Promise((resolve) => setTimeout(resolve, 300)); next = next.map((step, i) => ({ ...step, status: i < index + 1 ? "done" : i === index + 1 ? "active" : "pending" })); onUpdate(next); }
   return next;
 }

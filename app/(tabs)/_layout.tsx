@@ -43,6 +43,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="build"
+        options={{
+          title: "Build",
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons size={22} name="hammer-wrench" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="model"
         options={{
           title: "Models",

@@ -1,10 +1,11 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { askLocalModel } from "@/lib/local-inference";
-import { makePlan, runDemoPlan, type TaskStep } from "@/lib/task-engine";
+import { classifyTask, createProjectArtifact, makePlan, runDemoPlan, saveArtifact, type TaskStep } from "@/lib/task-engine";
 import { getSelectedModelId, MODEL_CATALOG } from "@/lib/model-manager";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
@@ -18,9 +19,10 @@ export default function ChatScreen() {
   const [plan, setPlan] = useState<TaskStep[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [modelName, setModelName] = useState("Fast model");
+  const router = useRouter();
   useEffect(() => { (async () => { const saved = await AsyncStorage.getItem("localagent.messages"); if (saved) setMessages(JSON.parse(saved)); const id = await getSelectedModelId(); setModelName(MODEL_CATALOG.find((item) => item.id === id)?.name ?? "Fast model"); })(); }, []);
   const lastSteps = useMemo(() => plan?.filter((step) => step.status === "done").length ?? 0, [plan]);
-  const send = async (value = draft) => { const prompt = value.trim(); if (!prompt || busy) return; setDraft(""); const userMessage: Message = { id: makeId(), role: "user", content: prompt }; const nextMessages = [...messages, userMessage]; setMessages(nextMessages); setPlan(makePlan(prompt)); setBusy(true); try { const response = await askLocalModel(prompt, messages.map(({ role, content }) => ({ role, content }))); const finalMessages = [...nextMessages, { id: makeId(), role: "assistant" as const, content: response }]; setMessages(finalMessages); await AsyncStorage.setItem("localagent.messages", JSON.stringify(finalMessages.slice(-30))); const rawTasks = await AsyncStorage.getItem("localagent.tasks"); const tasks = rawTasks ? JSON.parse(rawTasks) : []; await AsyncStorage.setItem("localagent.tasks", JSON.stringify([{ id: userMessage.id, title: prompt.slice(0, 70), status: "Completed", time: displayTime() }, ...tasks].slice(0, 30))); } catch (error) { Alert.alert("Local model error", error instanceof Error ? error.message : "Model response नहीं मिला।"); } finally { setBusy(false); } };
+  const send = async (value = draft) => { const prompt = value.trim(); if (!prompt || busy) return; setDraft(""); const userMessage: Message = { id: makeId(), role: "user", content: prompt }; const nextMessages = [...messages, userMessage]; setMessages(nextMessages); setPlan(makePlan(prompt)); setBusy(true); try { const response = await askLocalModel(prompt, messages.map(({ role, content }) => ({ role, content }))); const project = classifyTask(prompt) === "project" ? await saveArtifact(createProjectArtifact(prompt)) : null; const projectNote = project ? `\n\nProject files तैयार हैं: ${Object.keys(project.files).join(", ")}. Build tab खोलकर preview करें और ZIP/export workflow आगे जोड़ें।` : ""; const finalMessages = [...nextMessages, { id: makeId(), role: "assistant" as const, content: response + projectNote }]; setMessages(finalMessages); await AsyncStorage.setItem("localagent.messages", JSON.stringify(finalMessages.slice(-30))); const rawTasks = await AsyncStorage.getItem("localagent.tasks"); const tasks = rawTasks ? JSON.parse(rawTasks) : []; await AsyncStorage.setItem("localagent.tasks", JSON.stringify([{ id: userMessage.id, title: prompt.slice(0, 70), status: project ? "Project created" : "Completed", time: displayTime() }, ...tasks].slice(0, 30))); if (project) setTimeout(() => router.push("/(tabs)/build"), 350); } catch (error) { Alert.alert("Local model error", error instanceof Error ? error.message : "Model response नहीं मिला।"); } finally { setBusy(false); } };
   const runPlan = async () => { if (!plan || busy) return; setBusy(true); await runDemoPlan(plan, setPlan); setBusy(false); };
   return <SafeAreaView style={styles.safe} edges={["top"]}><KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <View style={styles.header}><View style={styles.brandRow}><View style={styles.logo}><View style={styles.logoLine} /></View><View><Text style={styles.title}>LocalAgent</Text><Text style={styles.kicker}>PRIVATE OPERATOR</Text></View></View><View style={styles.status}><View style={styles.statusDot} /><Text style={styles.statusText}>LOCAL</Text></View></View>

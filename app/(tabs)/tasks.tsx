@@ -1,0 +1,13 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+type HistoryItem = { id: string; title: string; status: string; time: string };
+export default function TasksScreen() {
+  const [items, setItems] = useState<HistoryItem[]>([]);
+  useEffect(() => { AsyncStorage.getItem("localagent.tasks").then((raw) => raw && setItems(JSON.parse(raw))); }, []);
+  return <SafeAreaView style={styles.safe} edges={["top"]}><ScrollView contentContainerStyle={styles.content}><Text style={styles.kicker}>WORK LOG</Text><Text style={styles.title}>आपके tasks</Text><Text style={styles.subtitle}>Local history — cloud sync नहीं।</Text>{items.length === 0 ? <View style={styles.empty}><MaterialCommunityIcons name="timeline-outline" size={35} color="#B8F36B" /><Text style={styles.emptyTitle}>अभी कोई saved task नहीं</Text><Text style={styles.emptyText}>Chat में task शुरू करें। Plan और progress यहीं दिखाई देंगे।</Text></View> : items.map((item) => <Pressable key={item.id} style={styles.row}><View style={styles.icon}><MaterialCommunityIcons name="check" size={18} color="#B8F36B" /></View><View style={{ flex: 1 }}><Text style={styles.itemTitle}>{item.title}</Text><Text style={styles.itemMeta}>{item.status} · {item.time}</Text></View><MaterialCommunityIcons name="chevron-right" size={20} color="#71818F" /></Pressable>)}</ScrollView></SafeAreaView>;
+}
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: "#0B1118" }, content: { padding: 16 }, kicker: { color: "#B8F36B", fontSize: 10, fontWeight: "900", letterSpacing: 1.4 }, title: { color: "#F3F7FB", fontSize: 25, fontWeight: "900", marginTop: 4 }, subtitle: { color: "#82919F", fontSize: 13, marginTop: 6 }, empty: { borderColor: "#263743", borderWidth: 1, borderRadius: 18, padding: 22, alignItems: "center", marginTop: 30, backgroundColor: "#121D26" }, emptyTitle: { color: "#EAF1F5", fontSize: 16, fontWeight: "800", marginTop: 10 }, emptyText: { color: "#81919F", textAlign: "center", lineHeight: 18, fontSize: 12, marginTop: 6 }, row: { backgroundColor: "#121D26", borderColor: "#263743", borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10 }, icon: { width: 34, height: 34, borderRadius: 11, backgroundColor: "#1B2A23", alignItems: "center", justifyContent: "center" }, itemTitle: { color: "#ECF2F5", fontSize: 14, fontWeight: "700" }, itemMeta: { color: "#778895", fontSize: 11, marginTop: 3 } });

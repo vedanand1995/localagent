@@ -1,48 +1,32 @@
-import { ScrollView, Text, View, TouchableOpacity } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { askLocalModel } from "@/lib/local-inference";
+import { makePlan, runDemoPlan, type TaskStep } from "@/lib/task-engine";
+import { getSelectedModelId, MODEL_CATALOG } from "@/lib/model-manager";
 
-import { ScreenContainer } from "@/components/screen-container";
+type Message = { id: string; role: "user" | "assistant"; content: string };
+const quickPrompts = ["मेरे task को steps में तोड़ो", "एक folder organize करने का plan बनाओ", "एक simple research workflow बनाओ"];
+const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const displayTime = () => new Date().toLocaleString();
 
-/**
- * Home Screen - NativeWind Example
- *
- * This template uses NativeWind (Tailwind CSS for React Native).
- * You can use familiar Tailwind classes directly in className props.
- *
- * Key patterns:
- * - Use `className` instead of `style` for most styling
- * - Theme colors: use tokens directly (bg-background, text-foreground, bg-primary, etc.); no dark: prefix needed
- * - Responsive: standard Tailwind breakpoints work on web
- * - Custom colors defined in tailwind.config.js
- */
-export default function HomeScreen() {
-  return (
-    <ScreenContainer className="p-6">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        <View className="flex-1 gap-8">
-          {/* Hero Section */}
-          <View className="items-center gap-2">
-            <Text className="text-4xl font-bold text-foreground">Welcome</Text>
-            <Text className="text-base text-muted text-center">
-              Edit app/(tabs)/index.tsx to get started
-            </Text>
-          </View>
-
-          {/* Example Card */}
-          <View className="w-full max-w-sm self-center bg-surface rounded-2xl p-6 shadow-sm border border-border">
-            <Text className="text-lg font-semibold text-foreground mb-2">NativeWind Ready</Text>
-            <Text className="text-sm text-muted leading-relaxed">
-              Use Tailwind CSS classes directly in your React Native components.
-            </Text>
-          </View>
-
-          {/* Example Button */}
-          <View className="items-center">
-            <TouchableOpacity className="bg-primary px-6 py-3 rounded-full active:opacity-80">
-              <Text className="text-background font-semibold">Get Started</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-    </ScreenContainer>
-  );
+export default function ChatScreen() {
+  const [messages, setMessages] = useState<Message[]>([{ id: "welcome", role: "assistant", content: "नमस्ते। मैं LocalAgent हूँ — आपका fast, local-first AI operator. कोई task लिखें; मैं पहले plan दिखाऊँगा, फिर safe execution करूँगा।" }]);
+  const [draft, setDraft] = useState("");
+  const [plan, setPlan] = useState<TaskStep[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [modelName, setModelName] = useState("Fast model");
+  useEffect(() => { (async () => { const saved = await AsyncStorage.getItem("localagent.messages"); if (saved) setMessages(JSON.parse(saved)); const id = await getSelectedModelId(); setModelName(MODEL_CATALOG.find((item) => item.id === id)?.name ?? "Fast model"); })(); }, []);
+  const lastSteps = useMemo(() => plan?.filter((step) => step.status === "done").length ?? 0, [plan]);
+  const send = async (value = draft) => { const prompt = value.trim(); if (!prompt || busy) return; setDraft(""); const userMessage: Message = { id: makeId(), role: "user", content: prompt }; const nextMessages = [...messages, userMessage]; setMessages(nextMessages); setPlan(makePlan(prompt)); setBusy(true); try { const response = await askLocalModel(prompt, messages.map(({ role, content }) => ({ role, content }))); const finalMessages = [...nextMessages, { id: makeId(), role: "assistant" as const, content: response }]; setMessages(finalMessages); await AsyncStorage.setItem("localagent.messages", JSON.stringify(finalMessages.slice(-30))); const rawTasks = await AsyncStorage.getItem("localagent.tasks"); const tasks = rawTasks ? JSON.parse(rawTasks) : []; await AsyncStorage.setItem("localagent.tasks", JSON.stringify([{ id: userMessage.id, title: prompt.slice(0, 70), status: "Completed", time: displayTime() }, ...tasks].slice(0, 30))); } catch (error) { Alert.alert("Local model error", error instanceof Error ? error.message : "Model response नहीं मिला।"); } finally { setBusy(false); } };
+  const runPlan = async () => { if (!plan || busy) return; setBusy(true); await runDemoPlan(plan, setPlan); setBusy(false); };
+  return <SafeAreaView style={styles.safe} edges={["top"]}><KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <View style={styles.header}><View style={styles.brandRow}><View style={styles.logo}><View style={styles.logoLine} /></View><View><Text style={styles.title}>LocalAgent</Text><Text style={styles.kicker}>PRIVATE OPERATOR</Text></View></View><View style={styles.status}><View style={styles.statusDot} /><Text style={styles.statusText}>LOCAL</Text></View></View>
+    <View style={styles.modelBar}><MaterialCommunityIcons name="chip" size={15} color="#B8F36B" /><Text style={styles.modelText}>{modelName}</Text><Text style={styles.modelHint}>ON DEVICE</Text></View>
+    <ScrollView style={styles.messages} contentContainerStyle={styles.messageContent} keyboardShouldPersistTaps="handled">{messages.map((message) => <View key={message.id} style={[styles.bubble, message.role === "user" ? styles.userBubble : styles.assistantBubble]}><Text style={styles.bubbleLabel}>{message.role === "user" ? "YOU" : "LOCALAGENT"}</Text><Text style={styles.bubbleText}>{message.content}</Text></View>)}{plan && <View style={styles.planCard}><View style={styles.planHeader}><View><Text style={styles.cardKicker}>TASK PLAN</Text><Text style={styles.planTitle}>{lastSteps}/{plan.length} steps complete</Text></View><MaterialCommunityIcons name="timeline-check-outline" size={22} color="#B8F36B" /></View><View style={styles.rail}>{plan.map((step) => <View key={step.id} style={styles.stepRow}><View style={[styles.stepDot, step.status === "done" && styles.doneDot, step.status === "active" && styles.activeDot]} /><View style={styles.stepCopy}><Text style={styles.stepTitle}>{step.title}</Text><Text style={styles.stepDetail}>{step.detail}</Text></View></View>)}</View><Pressable onPress={runPlan} disabled={busy} style={({ pressed }) => [styles.runButton, pressed && styles.pressed, busy && styles.disabled]}><Text style={styles.runButtonText}>{busy ? "WORKING…" : "RUN SAFE PLAN"}</Text><MaterialCommunityIcons name="arrow-right" size={18} color="#0B1118" /></Pressable></View>}{busy && <View style={styles.thinking}><ActivityIndicator size="small" color="#B8F36B" /><Text style={styles.thinkingText}>Local model is thinking…</Text></View>}</ScrollView>
+    <View style={styles.quickRow}>{quickPrompts.map((item) => <Pressable key={item} onPress={() => send(item)} style={styles.quickChip}><Text style={styles.quickText}>{item}</Text></Pressable>)}</View><View style={styles.composer}><TextInput value={draft} onChangeText={setDraft} placeholder="Task बताइए…" placeholderTextColor="#667384" multiline maxLength={2000} style={styles.input} /><Pressable onPress={() => send()} disabled={!draft.trim() || busy} style={[styles.sendButton, (!draft.trim() || busy) && styles.sendDisabled]}><MaterialCommunityIcons name="arrow-up" size={22} color="#0B1118" /></Pressable></View>
+  </KeyboardAvoidingView></SafeAreaView>;
 }
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: "#0B1118" }, container: { flex: 1, paddingHorizontal: 16 }, header: { paddingTop: 8, paddingBottom: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, brandRow: { flexDirection: "row", alignItems: "center", gap: 10 }, logo: { width: 34, height: 34, borderRadius: 11, backgroundColor: "#B8F36B", alignItems: "center", justifyContent: "center" }, logoLine: { width: 18, height: 4, backgroundColor: "#0B1118", transform: [{ rotate: "-35deg" }], borderRadius: 4 }, title: { color: "#F3F7FB", fontSize: 20, fontWeight: "800", letterSpacing: -0.5 }, kicker: { color: "#728093", fontSize: 9, fontWeight: "800", letterSpacing: 1.4, marginTop: 2 }, status: { borderColor: "#2E3A46", borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", gap: 6 }, statusDot: { width: 7, height: 7, borderRadius: 7, backgroundColor: "#B8F36B" }, statusText: { color: "#B8F36B", fontSize: 10, fontWeight: "800", letterSpacing: 1 }, modelBar: { height: 34, backgroundColor: "#111B25", borderRadius: 10, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 10 }, modelText: { color: "#DDE7EF", fontSize: 12, fontWeight: "700", flex: 1 }, modelHint: { color: "#728093", fontSize: 9, fontWeight: "800", letterSpacing: 1 }, messages: { flex: 1 }, messageContent: { paddingBottom: 12, gap: 10 }, bubble: { borderRadius: 16, padding: 14, maxWidth: "92%" }, assistantBubble: { backgroundColor: "#16222D", borderTopLeftRadius: 4, alignSelf: "flex-start" }, userBubble: { backgroundColor: "#22322D", borderTopRightRadius: 4, alignSelf: "flex-end" }, bubbleLabel: { color: "#7E8E9E", fontSize: 9, fontWeight: "800", letterSpacing: 1.2, marginBottom: 6 }, bubbleText: { color: "#E7EEF4", fontSize: 15, lineHeight: 22 }, planCard: { backgroundColor: "#121D26", borderColor: "#2B3C49", borderWidth: 1, borderRadius: 18, padding: 15, marginTop: 2 }, planHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingBottom: 12 }, cardKicker: { color: "#B8F36B", fontSize: 10, fontWeight: "800", letterSpacing: 1.3 }, planTitle: { color: "#F3F7FB", fontSize: 16, fontWeight: "800", marginTop: 3 }, rail: { borderLeftColor: "#344653", borderLeftWidth: 1, marginLeft: 4, paddingLeft: 14, gap: 14, paddingBottom: 12 }, stepRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, marginLeft: -19 }, stepDot: { width: 9, height: 9, borderRadius: 9, backgroundColor: "#344653", marginTop: 4, borderWidth: 2, borderColor: "#121D26" }, activeDot: { backgroundColor: "#B8F36B" }, doneDot: { backgroundColor: "#6BBA3F" }, stepCopy: { flex: 1 }, stepTitle: { color: "#DDE7EF", fontSize: 13, fontWeight: "700" }, stepDetail: { color: "#778A9A", fontSize: 11, lineHeight: 16, marginTop: 2 }, runButton: { backgroundColor: "#B8F36B", borderRadius: 12, height: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }, runButtonText: { color: "#0B1118", fontSize: 12, fontWeight: "900", letterSpacing: 0.6 }, thinking: { flexDirection: "row", gap: 8, alignItems: "center", padding: 10 }, thinkingText: { color: "#A1B0BD", fontSize: 12 }, quickRow: { gap: 7, flexDirection: "row", paddingVertical: 8 }, quickChip: { borderColor: "#2A3A47", borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 7, flexShrink: 1 }, quickText: { color: "#99A9B7", fontSize: 10 }, composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingBottom: 8 }, input: { flex: 1, minHeight: 48, maxHeight: 108, backgroundColor: "#16222D", color: "#F3F7FB", borderRadius: 15, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 11, fontSize: 15 }, sendButton: { width: 48, height: 48, borderRadius: 15, backgroundColor: "#B8F36B", alignItems: "center", justifyContent: "center" }, sendDisabled: { backgroundColor: "#344653" }, pressed: { opacity: 0.75 }, disabled: { opacity: 0.6 } });

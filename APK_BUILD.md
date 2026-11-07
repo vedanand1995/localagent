@@ -21,4 +21,4 @@ The project includes the `llama.rn` Expo config plugin, native artifact postinst
 
 ## Latest source checkpoint
 
-`111c381` on the managed `main` branch.
+`73734fe` on the managed `main` branch.

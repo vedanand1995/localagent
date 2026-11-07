@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loadArtifacts, type ProjectArtifact } from "@/lib/task-engine";
+import { writeTerminalFile } from "@/lib/terminal";
 
 export default function BuildScreen() {
   const [artifacts, setArtifacts] = useState<ProjectArtifact[]>([]);
@@ -16,7 +17,7 @@ export default function BuildScreen() {
     try {
       const root = `${FileSystem.documentDirectory}projects/${selected.id}`;
       await FileSystem.makeDirectoryAsync(root, { intermediates: true });
-      for (const [name, content] of Object.entries(selected.files)) await FileSystem.writeAsStringAsync(`${root}/${name}`, content);
+      for (const [name, content] of Object.entries(selected.files)) { await FileSystem.writeAsStringAsync(`${root}/${name}`, content); await writeTerminalFile(`projects/${selected.id}/${name}`, content); }
       Alert.alert("Project saved", `Files device storage में saved हैं:\n${root}`);
     } catch (error) { Alert.alert("Save failed", error instanceof Error ? error.message : "Project files save नहीं हुए।"); }
     finally { setSaving(false); }

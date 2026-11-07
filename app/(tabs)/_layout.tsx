@@ -50,6 +50,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="terminal"
+        options={{
+          title: "Terminal",
+          tabBarIcon: ({ color }) => <MaterialCommunityIcons size={22} name="console-line" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="model"
         options={{
           title: "Models",

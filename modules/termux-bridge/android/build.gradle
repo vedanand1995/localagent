@@ -4,4 +4,7 @@ apply plugin: 'expo-module-gradle-plugin'
 
 android {
   namespace 'expo.modules.termuxbridge'
+  defaultConfig {
+    versionName '1.0.0'
+  }
 }

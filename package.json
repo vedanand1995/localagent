@@ -53,6 +53,7 @@
     "expo-system-ui": "~57.0.4",
     "expo-video": "~57.0.5",
     "expo-web-browser": "~57.0.3",
+    "@localagent/termux-bridge": "file:modules/termux-bridge",
     "express": "^4.22.1",
     "jose": "6.1.0",
     "llama.rn": "0.13.0-rc.9",

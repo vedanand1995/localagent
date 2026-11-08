@@ -84,7 +84,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: ["POST_NOTIFICATIONS", "com.termux.permission.RUN_COMMAND"],
     intentFilters: [
       {
         action: "VIEW",
